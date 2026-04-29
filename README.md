@@ -78,6 +78,12 @@ Supported platforms:
 These guides will be continuously updated based on user feedback and software improvements. If you encounter any issues or have suggestions, please open an issue on our [GitHub Issues page](https://github.com/JiekaiLab/Polyomino/issues).
 
 
+Citation
+--------
+If Polyomino helps your research, please cite the published paper:
+
+- https://genome.cshlp.org/content/early/2025/10/20/gr280532125
+
 Contributing
 ------------
 Contributions to Polyomino are welcome. Please refer to the project's issues and pull requests for areas where you can help.
