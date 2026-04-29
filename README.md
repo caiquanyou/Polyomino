@@ -32,14 +32,14 @@ After installation, Polyomino can be used in Python as follows:
     import scanpy as sc
     scdata = sc.read_h5ad('/Path/to/scdata.h5ad')
     stdata = sc.read_h5ad('/Path/to/stdata.h5ad')
-    stdata_grid = po.generate_grid(stdata,width=none)
+    stdata_grid = po.generate_grid(stdata, width=None)
     po_object = po.Polyomino(scdata,stdata_grid,cluster_time=1,device='cpu')
     po_object.allocate()
-    cell_alocated_data = po.sc2sc(scdata, stdata, zm_object.spot_matrix,thres=0.1,method='max')
+    cell_allocated_data = po.sc2sc(scdata, stdata, po_object.spot_matrix, thres=0.1, method='max')
  ```
 Also can running in terminal:
  ```bash
-Polyomino \
+polyomino \
     -sc SC_path \
     -st ST_path \
     -w Width_of_grid \
