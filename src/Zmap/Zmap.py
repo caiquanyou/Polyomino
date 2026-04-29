@@ -246,7 +246,7 @@ class Zmap3D:
         self.cluster_matrix = None
         self.spot_matrix = None
 
-    def allocate(self, num_epochs=500):
+    def allocate(self, num_epochs=500, early_stopping_patience=30, early_stopping_min_delta=1e-5, lambda_spatial_smooth=0.0):
         """
         Runs the Zmap algorithm for mapping scRNA-seq data to 3D spatial transcriptomics data.
         Generates a matrix with probabilities of each cell belonging to specific clusters.
@@ -268,7 +268,17 @@ class Zmap3D:
         else:
             if self.cluster_time == 0:
                 print("Starting spot mapping.")
-                self.spot_matrix = spot_mapping3D(self.scdata, self.stdata, genes=self.genes, device=self.device, num_epochs=num_epochs)
+                self.spot_matrix = spot_mapping3D(
+                    self.scdata, self.stdata, genes=self.genes, device=self.device, num_epochs=num_epochs,
+                    x_bulk=self.bulkX, y_bulk=self.bulkY, z_bulk=self.bulkZ,
+                    early_stopping_patience=early_stopping_patience,
+                    early_stopping_min_delta=early_stopping_min_delta,
+                    lambda_spatial_smooth=lambda_spatial_smooth
+                )
+                self.scdata.obs['grid_prob'] = np.max(self.spot_matrix, axis=1)
+                print("Spot mapping completed.")
+                print("Mapping matrix saved in zm.spot_matrix")
+                return
             else:
                 self.cluster_matrix = 0
 
@@ -294,12 +304,14 @@ class Zmap3D:
 
             print("Starting spot mapping.")
             self.spot_matrix = spot_mapping3D(
-                self.scdata, self.stdata, self.cluster_matrix.values, genes=self.genes, device=self.device, num_epochs=num_epochs
+                self.scdata, self.stdata, self.cluster_matrix.values, genes=self.genes, device=self.device, num_epochs=num_epochs,
+                x_bulk=self.bulkX, y_bulk=self.bulkY, z_bulk=self.bulkZ,
+                early_stopping_patience=early_stopping_patience,
+                early_stopping_min_delta=early_stopping_min_delta,
+                lambda_spatial_smooth=lambda_spatial_smooth
             )
         else:
-            self.spot_matrix = spot_mapping3D(
-                self.scdata, self.stdata, self.cluster_matrix.values, genes=self.genes, device=self.device, num_epochs=num_epochs
-            )
+            self.spot_matrix = spot_mapping3D(self.scdata, self.stdata, genes=self.genes, device=self.device, num_epochs=num_epochs)
 
         self.scdata.obs['grid_prob'] = np.max(self.spot_matrix, axis=1)
         print("Spot mapping completed.")
@@ -586,7 +598,13 @@ def spot_mapping3D(
     genes=None,
     device='cpu',
     num_epochs=500,
-    learning_rate=0.1
+    learning_rate=0.1,
+    x_bulk=None,
+    y_bulk=None,
+    z_bulk=None,
+    early_stopping_patience=30,
+    early_stopping_min_delta=1e-5,
+    lambda_spatial_smooth=0.0
 ):
     """
     Maps single-cell RNA-seq data to spatial spots in a 3D spatial transcriptomics setup.
@@ -604,9 +622,12 @@ def spot_mapping3D(
         np.ndarray: Mapping matrix from single cells to spatial spots.
     """
     # Generate bulk data for X, Y, and Z directions
-    x_bulk = generate_Xstrips(stdata)
-    y_bulk = generate_Ystrips(stdata)
-    z_bulk = generate_Zstrips(stdata)
+    if x_bulk is None:
+        x_bulk = generate_Xstrips(stdata)
+    if y_bulk is None:
+        y_bulk = generate_Ystrips(stdata)
+    if z_bulk is None:
+        z_bulk = generate_Zstrips(stdata)
     
     # Create AnnData objects for bulk data
     bx1 = sc.AnnData(X=x_bulk, var=stdata.var)
@@ -636,8 +657,15 @@ def spot_mapping3D(
         Gy=Gx2,
         Gz=Gx3,
         cluster_matrix=cluster_mapping_matrix,
-        device=device
-    ).fit(learning_rate=learning_rate, num_epochs=num_epochs, print_each=100)
+        device=device,
+        lambda_spatial_smooth=lambda_spatial_smooth
+    ).fit(
+        learning_rate=learning_rate,
+        num_epochs=num_epochs,
+        print_each=100,
+        early_stopping_patience=early_stopping_patience,
+        early_stopping_min_delta=early_stopping_min_delta
+    )
     return mapping_matrix
 
 def sc2sc(

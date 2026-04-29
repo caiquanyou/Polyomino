@@ -243,7 +243,7 @@ class Cell2Spots:
         
         return total_loss, gx1, gx2, gy1, gy2, mask_sum
 
-    def fit(self, num_epochs=500,learning_rate=0.1, print_each=100):
+    def fit(self, num_epochs=500,learning_rate=0.1, print_each=100, early_stopping_patience=30, early_stopping_min_delta=1e-5):
         """
         Runs the optimization process and returns the mapping matrix.
         
@@ -258,11 +258,23 @@ class Cell2Spots:
         torch.manual_seed(seed=self.random_state)
         optimizer = torch.optim.Adam([self.cluster_matrix], lr=learning_rate)
         
+        best_loss = float("inf")
+        stale_steps = 0
         for t in range(num_epochs):
             loss, gx1, gx2, gy1, gy2, mask_sum = self._loss_fn(verbose=(print_each is not None and t % print_each == 0))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            current_loss = loss.item()
+            if best_loss - current_loss > early_stopping_min_delta:
+                best_loss = current_loss
+                stale_steps = 0
+            else:
+                stale_steps += 1
+            if early_stopping_patience is not None and stale_steps >= early_stopping_patience:
+                if print_each is not None:
+                    print(f"Early stopping at epoch {t+1}.")
+                break
         
         with torch.no_grad():
             spot_matrix = softmax(self.cluster_matrix, dim=1).cpu().numpy()
@@ -308,6 +320,7 @@ class Cell2VisiumSpots:
         cluster_matrix=None,
         device="cpu",
         random_state=1597,
+        lambda_spatial_smooth=0.0,
     ):
         """
         Initializes the Cell2Spots3D instance.
@@ -340,6 +353,7 @@ class Cell2VisiumSpots:
         self.lambda_gz1 = lambda_gz1
         self.lambda_gz2 = lambda_gz2
         self.random_state = random_state
+        self.lambda_spatial_smooth = lambda_spatial_smooth
         np.random.seed(seed=self.random_state)
         
         if cluster_matrix is None:
@@ -359,6 +373,10 @@ class Cell2VisiumSpots:
         self.x_index = torch.tensor(ST.obs['x'] - ST.obs['x'].min(), device=device, dtype=torch.int32)
         self.y_index = torch.tensor(ST.obs['y'] - ST.obs['y'].min(), device=device, dtype=torch.int32)
         self.z_index = torch.tensor(ST.obs['z'] - ST.obs['z'].min(), device=device, dtype=torch.int32)
+        coord = np.array(ST.obs[['x', 'y', 'z']], dtype=np.float32)
+        dist = np.linalg.norm(coord[:, None, :] - coord[None, :, :], axis=2)
+        self._neighbor_dist = torch.tensor(dist, device=device, dtype=torch.float32)
+        self._neighbor_dist.fill_diagonal_(np.inf)
 
     def _generate_Xstrips(self, cluster_probs):
         """
@@ -434,6 +452,12 @@ class Cell2VisiumSpots:
         expression_term_z = z_gv_term + z_vg_term
         
         total_loss = -expression_term_x - expression_term_y - expression_term_z
+        smooth_term = torch.tensor(0.0, device=self.device)
+        if self.lambda_spatial_smooth > 0:
+            nn_idx = torch.argmin(self._neighbor_dist, dim=1)
+            neighbor_probs = cluster_probs[:, nn_idx]
+            smooth_term = ((cluster_probs - neighbor_probs) ** 2).mean()
+            total_loss = total_loss + self.lambda_spatial_smooth * smooth_term
         
         if verbose:
             print(f"Total loss: {total_loss.item():.3f}")
@@ -448,7 +472,7 @@ class Cell2VisiumSpots:
             z_vg_term
         )
 
-    def fit(self, num_epochs=500,learning_rate=0.1, print_each=100):
+    def fit(self, num_epochs=500,learning_rate=0.1, print_each=100, early_stopping_patience=30, early_stopping_min_delta=1e-5):
         """
         Runs the optimization process and returns the mapping matrix.
         
@@ -463,11 +487,23 @@ class Cell2VisiumSpots:
         torch.manual_seed(seed=self.random_state)
         optimizer = torch.optim.Adam([self.cluster_matrix], lr=learning_rate)
         
+        best_loss = float("inf")
+        stale_steps = 0
         for t in range(num_epochs):
             loss, *loss_terms = self._loss_fn(verbose=(print_each is not None and t % print_each == 0))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            current_loss = loss.item()
+            if best_loss - current_loss > early_stopping_min_delta:
+                best_loss = current_loss
+                stale_steps = 0
+            else:
+                stale_steps += 1
+            if early_stopping_patience is not None and stale_steps >= early_stopping_patience:
+                if print_each is not None:
+                    print(f"Early stopping at epoch {t+1}.")
+                break
         
         with torch.no_grad():
             spot_matrix = softmax(self.cluster_matrix, dim=1).cpu().numpy()
