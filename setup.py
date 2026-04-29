@@ -2,12 +2,12 @@ from setuptools import setup
 import setuptools
 from pathlib import Path
 this_directory = Path(__file__).parent
-long_description = (this_directory / "README.rst").read_text()
+long_description = (this_directory / "README.md").read_text(encoding='utf-8')
 setup(
-    name='Zmap-sc',
+    name='Polyomino-sc',
     version='1.0.0',
     description='An algorithm framework employing multi-layered regional constraints to accurately assign cell locations, enhancing spatial accuracy and resilience to noise.',
-    url='https://github.com/caiquanyou/Zmap',
+    url='https://github.com/caiquanyou/Polyomino',
     author='Cai Quanyou',
     author_email='cai_quanyou@gibh.ac.cn',
     python_requires='>=3.8.0',
@@ -29,6 +29,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
+            'polyomino=Zmap.Zmap:main_Zmap',
             'zmap=Zmap.Zmap:main_Zmap',
         ]},
     classifiers=["Programming Language :: Python :: 3.8", "Operating System :: MacOS",],
